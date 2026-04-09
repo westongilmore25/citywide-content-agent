@@ -34,25 +34,6 @@ const REFINE_OPTIONS = [
   "Simplify like an educator explaining something complex",
 ];
 
-function buildImagePrompt(post) {
-  const content = (post.content || "").slice(0, 400);
-  const topic = (post.topic || "").slice(0, 60);
-  const type = post.type || "buyer-education";
-
-  // Extract a short punchy headline from the topic
-  const headline = topic || "Know before you borrow";
-
-  const base = `Bold social media graphic poster design. Dark navy blue background. Large bold gold typography. Clean minimal layout. Professional mortgage brand. Square format.`;
-
-  const typeStyles = {
-    "buyer-education": `Educational mortgage tip poster. Main headline text: "${headline}". Supporting text: "CityWide Home Mortgage | Weston Gilmore". Bold sans-serif typography. Gold headline on navy background. Clean geometric accent shapes in gold. No people. Professional financial education aesthetic.`,
-    "agent-focused": `Realtor partnership announcement poster. Main headline text: "${headline}". Supporting text: "Partner with Weston Gilmore | CityWide Home Mortgage". Bold authoritative typography. Gold and white text on deep navy. Minimal geometric design elements. No people. Professional B2B real estate aesthetic.`,
-    "deal-story": `Success announcement poster. Main headline text: "${headline}". Supporting text: "CityWide Home Mortgage | Colorado's Front Range". Bold celebratory typography. Bright gold headline on navy. Star or checkmark accent graphic. No people. Achievement and victory aesthetic.`,
-    "personal": `Personal brand poster. Main headline text: "${headline}". Supporting text: "Weston Gilmore | CityWide Home Mortgage | Colorado". Bold warm typography. Gold headline on navy background. Minimal mountain silhouette accent. No people. Trustworthy professional aesthetic.`,
-  };
-
-  return `${base} ${typeStyles[type] || typeStyles["buyer-education"]}`;
-}
 
 const C = {
   bg:"#0a0f1a", surface:"#111827", surfaceHov:"#1a2236", border:"#2a3550", borderBright:"#3d5080",
