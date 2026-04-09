@@ -34,22 +34,24 @@ const REFINE_OPTIONS = [
   "Simplify like an educator explaining something complex",
 ];
 
-// Dynamically build an image prompt based on post content and type
 function buildImagePrompt(post) {
-  const content = (post.content || "").slice(0, 300);
-  const topic = post.topic || "";
+  const content = (post.content || "").slice(0, 400);
+  const topic = (post.topic || "").slice(0, 60);
   const type = post.type || "buyer-education";
 
-  const styleBase = `Bold graphic design poster, dark navy blue background (#0a0f1a), large bold gold (#f0b429) typography as the hero element, clean minimal layout, strong visual hierarchy, no people, professional financial brand aesthetic, square format social media graphic`;
+  // Extract a short punchy headline from the topic
+  const headline = topic || "Know before you borrow";
 
-  const typeGuide = {
-    "buyer-education": `The graphic should visually represent a key mortgage education concept. Extract the single most important fact, tip, or insight from this post and make it the bold headline text of the graphic. Use supporting minimal icons or geometric shapes in gold on navy. Topic: ${topic}. Post excerpt: ${content}`,
-    "agent-focused": `The graphic should speak directly to Realtors. Extract the most compelling point from this post about how Weston helps agents and make it the bold headline. Use professional, authoritative design with gold accents on navy. Topic: ${topic}. Post excerpt: ${content}`,
-    "deal-story": `The graphic should feel celebratory and achievement-focused. Extract the key win or milestone from this post and make it the bold visual headline. Use warm gold tones on navy with a sense of accomplishment. Topic: ${topic}. Post excerpt: ${content}`,
-    "personal": `The graphic should feel warm and human while staying professional. Extract the core message or value from this post and make it the bold headline. Clean navy and gold design. Topic: ${topic}. Post excerpt: ${content}`,
+  const base = `Bold social media graphic poster design. Dark navy blue background. Large bold gold typography. Clean minimal layout. Professional mortgage brand. Square format.`;
+
+  const typeStyles = {
+    "buyer-education": `Educational mortgage tip poster. Main headline text: "${headline}". Supporting text: "CityWide Home Mortgage | Weston Gilmore". Bold sans-serif typography. Gold headline on navy background. Clean geometric accent shapes in gold. No people. Professional financial education aesthetic.`,
+    "agent-focused": `Realtor partnership announcement poster. Main headline text: "${headline}". Supporting text: "Partner with Weston Gilmore | CityWide Home Mortgage". Bold authoritative typography. Gold and white text on deep navy. Minimal geometric design elements. No people. Professional B2B real estate aesthetic.`,
+    "deal-story": `Success announcement poster. Main headline text: "${headline}". Supporting text: "CityWide Home Mortgage | Colorado's Front Range". Bold celebratory typography. Bright gold headline on navy. Star or checkmark accent graphic. No people. Achievement and victory aesthetic.`,
+    "personal": `Personal brand poster. Main headline text: "${headline}". Supporting text: "Weston Gilmore | CityWide Home Mortgage | Colorado". Bold warm typography. Gold headline on navy background. Minimal mountain silhouette accent. No people. Trustworthy professional aesthetic.`,
   };
 
-  return `${styleBase}. ${typeGuide[type] || typeGuide["buyer-education"]}. No photographs of people. No stock imagery. Typography-first design. Gold and white text on dark navy only.`;
+  return `${base} ${typeStyles[type] || typeStyles["buyer-education"]}`;
 }
 
 const C = {
@@ -157,16 +159,56 @@ async function callClaude(apiKey, messages, systemPrompt) {
 }
 
 async function callFal(apiKey, prompt) {
-  const res = await fetch("https://fal.run/fal-ai/flux/schnell", {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Key ${apiKey}`,
+  };
+
+  // Step 1: Submit to Ideogram V3 queue
+  const submitRes = await fetch("https://queue.fal.run/fal-ai/ideogram/v3", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Key ${apiKey}` },
-    body: JSON.stringify({ prompt, image_size: "square_hd", num_inference_steps: 4, num_images: 1, enable_safety_checker: true, sync_mode: true }),
+    headers,
+    body: JSON.stringify({
+      prompt,
+      aspect_ratio: "1:1",
+      rendering_speed: "BALANCED",
+      expand_prompt: false,
+      num_images: 1,
+      color_palette: {
+        members: [
+          { color: "#0a0f1a", weight: 0.5 },
+          { color: "#f0b429", weight: 0.35 },
+          { color: "#ffffff", weight: 0.15 },
+        ]
+      }
+    }),
   });
-  if (!res.ok) { const t = await res.text().catch(() => ""); throw new Error(`fal.ai ${res.status}: ${t.slice(0, 120)}`); }
-  const data = await res.json();
-  const url = data?.images?.[0]?.url;
-  if (!url) throw new Error("No image returned from fal.ai");
-  return url;
+
+  if (!submitRes.ok) {
+    const t = await submitRes.text().catch(() => "");
+    throw new Error(`Ideogram submit error ${submitRes.status}: ${t.slice(0, 150)}`);
+  }
+
+  const { request_id } = await submitRes.json();
+  if (!request_id) throw new Error("No request ID returned from fal.ai");
+
+  // Step 2: Poll for result (up to 60 seconds)
+  const statusUrl = `https://queue.fal.run/fal-ai/ideogram/v3/requests/${request_id}`;
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    const statusRes = await fetch(statusUrl, { headers });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    if (statusData.status === "COMPLETED") {
+      const url = statusData?.output?.images?.[0]?.url;
+      if (url) return url;
+      throw new Error("Image completed but no URL returned");
+    }
+    if (statusData.status === "FAILED") {
+      throw new Error("Image generation failed on fal.ai");
+    }
+  }
+  throw new Error("Image generation timed out. Please try again.");
 }
 
 function makeSystem() {
@@ -211,8 +253,8 @@ function ImagePanel({ post, falKey }) {
   };
 
   if (!falKey) return <div style={{ marginTop: 12, fontSize: 12, color: C.muted, textAlign: "center", padding: 8, background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>Add your fal.ai key in Settings to enable image generation</div>;
-  if (state === "idle") return <button onClick={generate} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: C.goldBg, border: `1px solid ${C.goldBorder}`, color: C.gold, marginTop: 14, width: "100%", fontFamily: "inherit" }}>🎨 Generate matching image with Flux AI</button>;
-  if (state === "loading") return <div style={{ marginTop: 14, background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: 22, textAlign: "center", border: `1px solid ${C.border}` }}><div style={{ width: 24, height: 24, border: `2px solid ${C.goldBg}`, borderTopColor: C.gold, borderRadius: "50%", animation: "cwspin 0.8s linear infinite", margin: "0 auto 10px" }} /><p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Generating with Flux AI — 5-10 seconds...</p></div>;
+  if (state === "idle") return <button onClick={generate} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: C.goldBg, border: `1px solid ${C.goldBorder}`, color: C.gold, marginTop: 14, width: "100%", fontFamily: "inherit" }}>🎨 Generate matching image with Ideogram AI</button>;
+  if (state === "loading") return <div style={{ marginTop: 14, background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: 22, textAlign: "center", border: `1px solid ${C.border}` }}><div style={{ width: 24, height: 24, border: `2px solid ${C.goldBg}`, borderTopColor: C.gold, borderRadius: "50%", animation: "cwspin 0.8s linear infinite", margin: "0 auto 10px" }} /><p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Generating with Ideogram V3 — usually 15-30 seconds...</p></div>;
   if (state === "error") return <div style={{ marginTop: 14 }}><div style={{ background: C.redBg, border: `1px solid ${C.redBorder}`, borderRadius: 8, padding: "10px 14px", color: C.red, fontSize: 13, marginBottom: 8 }}>⚠️ {imgError}</div><button onClick={generate} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: "transparent", border: `1px solid ${C.goldBorder}`, color: C.gold, width: "100%", fontFamily: "inherit" }}>↺ Try again</button></div>;
   return (
     <div style={{ marginTop: 14 }}>
