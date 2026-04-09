@@ -192,23 +192,29 @@ async function callFal(apiKey, prompt) {
   const { request_id } = await submitRes.json();
   if (!request_id) throw new Error("No request ID returned from fal.ai");
 
-  // Step 2: Poll for result (up to 60 seconds)
+  // Step 2: Poll for result (up to 120 seconds)
   const statusUrl = `https://queue.fal.run/fal-ai/ideogram/v3/requests/${request_id}`;
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 2000));
-    const statusRes = await fetch(statusUrl, { headers });
-    if (!statusRes.ok) continue;
-    const statusData = await statusRes.json();
-    if (statusData.status === "COMPLETED") {
-      const url = statusData?.output?.images?.[0]?.url;
-      if (url) return url;
-      throw new Error("Image completed but no URL returned");
-    }
-    if (statusData.status === "FAILED") {
-      throw new Error("Image generation failed on fal.ai");
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const statusRes = await fetch(statusUrl, { headers });
+      if (!statusRes.ok) continue;
+      const statusData = await statusRes.json();
+      if (statusData.status === "COMPLETED") {
+        const url = statusData?.output?.images?.[0]?.url;
+        if (url) return url;
+        throw new Error("Image completed but no URL returned");
+      }
+      if (statusData.status === "FAILED") {
+        throw new Error("Image generation failed on fal.ai");
+      }
+      // IN_QUEUE or IN_PROGRESS — keep waiting
+    } catch(pollErr) {
+      if (pollErr.message.includes("failed") || pollErr.message.includes("no URL")) throw pollErr;
+      // network hiccup, keep polling
     }
   }
-  throw new Error("Image generation timed out. Please try again.");
+  throw new Error("Image generation timed out after 2 minutes. Please try again.");
 }
 
 function makeSystem() {
