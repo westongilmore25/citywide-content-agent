@@ -125,10 +125,8 @@ function extractJSON(raw) {
 function useKeys() {
   const stored = () => { try { return JSON.parse(localStorage.getItem("cw_keys") || "{}"); } catch { return {}; } };
   const [anthropicKey, setAKState] = useState(stored().anthropic || "");
-  const [falKey, setFKState] = useState(stored().fal || "");
-  const setAnthropicKey = (k) => { setAKState(k); try { localStorage.setItem("cw_keys", JSON.stringify({ anthropic: k, fal: falKey })); } catch {} };
-  const setFalKey = (k) => { setFKState(k); try { localStorage.setItem("cw_keys", JSON.stringify({ anthropic: anthropicKey, fal: k })); } catch {} };
-  return { anthropicKey, falKey, setAnthropicKey, setFalKey };
+  const setAnthropicKey = (k) => { setAKState(k); try { localStorage.setItem("cw_keys", JSON.stringify({ anthropic: k })); } catch {} };
+  return { anthropicKey, setAnthropicKey };
 }
 
 async function callClaude(apiKey, messages, systemPrompt) {
@@ -158,63 +156,55 @@ async function callClaude(apiKey, messages, systemPrompt) {
   return extractJSON(text);
 }
 
-async function callFal(apiKey, prompt) {
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `Key ${apiKey}`,
+function buildImagePrompt(post) {
+  const type = post.type || "buyer-education";
+  const topic = (post.topic || "").slice(0, 80);
+  const excerpt = (post.content || "").slice(0, 350);
+
+  const styleBase = `Informational social media graphic for a Colorado mortgage advisor. Square format. Clean modern design. No real people or faces.`;
+
+  const typePrompts = {
+    "buyer-education": `${styleBase} Create an educational infographic-style image about: "${topic}". The graphic should visually explain a mortgage concept using icons, simple diagrams, or data visualization. Use a clean white or light background with dark navy and gold accents. Include simple illustrated icons representing homes, documents, money, or credit scores depending on the topic. Style: modern financial education graphic, minimal, clear, professional. Post context: ${excerpt}`,
+    "agent-focused": `${styleBase} Create a professional graphic for real estate agents about: "${topic}". Show a visual concept using a clean diagram, checklist layout, or process flow that helps agents understand mortgage strategy. Dark navy background with gold typography and white accents. Style: bold B2B professional graphic, authoritative, clean. Post context: ${excerpt}`,
+    "deal-story": `${styleBase} Create a celebratory achievement graphic about: "${topic}". Use bold typography, a checkmark or key icon, and a warm color palette of navy and gold. Should feel like a milestone announcement — clean, minimal, joyful. Style: achievement badge or announcement card design. Post context: ${excerpt}`,
+    "personal": `${styleBase} Create a warm personal brand graphic for Weston Gilmore, Colorado mortgage advisor. Topic: "${topic}". Clean design with a Colorado mountain silhouette or simple home icon as the visual anchor. Navy and gold color palette. Style: approachable personal brand card, professional yet warm. Post context: ${excerpt}`,
   };
 
-  // Step 1: Submit to Ideogram V3 queue
-  const submitRes = await fetch("https://queue.fal.run/fal-ai/ideogram/v3", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      prompt,
-      aspect_ratio: "1:1",
-      rendering_speed: "BALANCED",
-      expand_prompt: false,
-      num_images: 1,
-      color_palette: {
-        members: [
-          { color: "#0a0f1a", weight: 0.5 },
-          { color: "#f0b429", weight: 0.35 },
-          { color: "#ffffff", weight: 0.15 },
-        ]
-      }
-    }),
-  });
+  return typePrompts[type] || typePrompts["buyer-education"];
+}
 
-  if (!submitRes.ok) {
-    const t = await submitRes.text().catch(() => "");
-    throw new Error(`Ideogram submit error ${submitRes.status}: ${t.slice(0, 150)}`);
-  }
+function ImagePromptPanel({ post }) {
+  const [copied, setCopied] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const prompt = buildImagePrompt(post);
 
-  const { request_id } = await submitRes.json();
-  if (!request_id) throw new Error("No request ID returned from fal.ai");
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(prompt).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-  // Step 2: Poll for result (up to 120 seconds)
-  const statusUrl = `https://queue.fal.run/fal-ai/ideogram/v3/requests/${request_id}`;
-  for (let i = 0; i < 40; i++) {
-    await new Promise(r => setTimeout(r, 3000));
-    try {
-      const statusRes = await fetch(statusUrl, { headers });
-      if (!statusRes.ok) continue;
-      const statusData = await statusRes.json();
-      if (statusData.status === "COMPLETED") {
-        const url = statusData?.output?.images?.[0]?.url;
-        if (url) return url;
-        throw new Error("Image completed but no URL returned");
-      }
-      if (statusData.status === "FAILED") {
-        throw new Error("Image generation failed on fal.ai");
-      }
-      // IN_QUEUE or IN_PROGRESS — keep waiting
-    } catch(pollErr) {
-      if (pollErr.message.includes("failed") || pollErr.message.includes("no URL")) throw pollErr;
-      // network hiccup, keep polling
-    }
-  }
-  throw new Error("Image generation timed out after 2 minutes. Please try again.");
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={copyPrompt} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: C.goldBg, border: `1px solid ${C.goldBorder}`, color: C.gold, fontFamily: "inherit" }}>
+          {copied ? "✓ Prompt Copied!" : "🎨 Copy Image Prompt for Nano Banana 2"}
+        </button>
+        <button onClick={() => setShowPrompt(!showPrompt)} style={{ padding: "9px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, fontFamily: "inherit" }}>
+          {showPrompt ? "Hide" : "Preview"}
+        </button>
+      </div>
+      {showPrompt && (
+        <div style={{ marginTop: 10, background: "rgba(0,0,0,0.3)", border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.gold, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.07em" }}>Nano Banana 2 Prompt</div>
+          {prompt}
+        </div>
+      )}
+      <a href="https://fal.ai/models/fal-ai/nano-banana-2" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, fontSize: 12, color: C.muted, textDecoration: "none" }}>
+        Open fal.ai Nano Banana 2 ↗
+      </a>
+    </div>
+  );
 }
 
 function makeSystem() {
@@ -234,46 +224,8 @@ function Spinner({ msg }) {
   );
 }
 
-function ImagePanel({ post, falKey }) {
-  const [state, setState] = useState("idle");
-  const [imageUrl, setImageUrl] = useState(null);
-  const [imgError, setImgError] = useState("");
 
-  const generate = async () => {
-    setState("loading"); setImgError("");
-    try {
-      const prompt = buildImagePrompt(post);
-      const url = await callFal(falKey, prompt);
-      setImageUrl(url);
-      setState("done");
-    }
-    catch (e) { setImgError(e.message || "Image generation failed."); setState("error"); }
-  };
-
-  const download = async () => {
-    try {
-      const res = await fetch(imageUrl); const blob = await res.blob();
-      const url = URL.createObjectURL(blob); const a = document.createElement("a");
-      a.href = url; a.download = "citywide-post-image.jpg"; a.click(); URL.revokeObjectURL(url);
-    } catch { window.open(imageUrl, "_blank"); }
-  };
-
-  if (!falKey) return <div style={{ marginTop: 12, fontSize: 12, color: C.muted, textAlign: "center", padding: 8, background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>Add your fal.ai key in Settings to enable image generation</div>;
-  if (state === "idle") return <button onClick={generate} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: C.goldBg, border: `1px solid ${C.goldBorder}`, color: C.gold, marginTop: 14, width: "100%", fontFamily: "inherit" }}>🎨 Generate matching image with Ideogram AI</button>;
-  if (state === "loading") return <div style={{ marginTop: 14, background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: 22, textAlign: "center", border: `1px solid ${C.border}` }}><div style={{ width: 24, height: 24, border: `2px solid ${C.goldBg}`, borderTopColor: C.gold, borderRadius: "50%", animation: "cwspin 0.8s linear infinite", margin: "0 auto 10px" }} /><p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Generating with Ideogram V3 — usually 15-30 seconds...</p></div>;
-  if (state === "error") return <div style={{ marginTop: 14 }}><div style={{ background: C.redBg, border: `1px solid ${C.redBorder}`, borderRadius: 8, padding: "10px 14px", color: C.red, fontSize: 13, marginBottom: 8 }}>⚠️ {imgError}</div><button onClick={generate} style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: "transparent", border: `1px solid ${C.goldBorder}`, color: C.gold, width: "100%", fontFamily: "inherit" }}>↺ Try again</button></div>;
-  return (
-    <div style={{ marginTop: 14 }}>
-      <img src={imageUrl} alt="AI generated visual" style={{ width: "100%", borderRadius: 10, display: "block", border: `1px solid ${C.border}` }} />
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={download} style={{ flex: 1, padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, border: "none", color: "#0a0f1a", fontFamily: "inherit" }}>⬇️ Download image</button>
-        <button onClick={() => { setState("idle"); setImageUrl(null); }} style={{ padding: "9px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", background: C.surface, border: `1px solid ${C.border}`, color: C.white, fontFamily: "inherit" }}>↺ New</button>
-      </div>
-    </div>
-  );
-}
-
-function PostCard({ post, id, onSave, saved, falKey }) {
+function PostCard({ post, id, onSave, saved }) {
   const [copied, setCopied] = useState(false);
   const isInsta = post.platform === "Instagram";
   const ac = audienceType(post.type);
@@ -293,15 +245,14 @@ function PostCard({ post, id, onSave, saved, falKey }) {
       </div>
       <div style={{ fontSize: 14, lineHeight: 1.75, color: C.white, whiteSpace: "pre-wrap", background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: 16, border: `1px solid ${C.border}` }}>{post.content}</div>
       {post.topic && <div style={{ marginTop: 8, fontSize: 12, color: C.muted, fontWeight: 600 }}>📌 {post.topic}</div>}
-      <ImagePanel post={post} falKey={falKey} />
+      <ImagePromptPanel post={post} />
     </div>
   );
 }
 
-function SettingsPanel({ anthropicKey, falKey, setAnthropicKey, setFalKey, onClose }) {
+function SettingsPanel({ anthropicKey, setAnthropicKey, onClose }) {
   const [ak, setAk] = useState(anthropicKey);
-  const [fk, setFk] = useState(falKey);
-  const save = () => { setAnthropicKey(ak); setFalKey(fk); onClose(); };
+  const save = () => { setAnthropicKey(ak); onClose(); };
   const inp = { width: "100%", background: "#0f1825", border: `1px solid ${C.borderBright}`, borderRadius: 10, padding: "12px 14px", color: C.white, fontFamily: "inherit", fontSize: 14, outline: "none", marginBottom: 6, boxSizing: "border-box" };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -310,10 +261,7 @@ function SettingsPanel({ anthropicKey, falKey, setAnthropicKey, setFalKey, onClo
         <p style={{ fontSize: 13, color: C.muted, marginBottom: 22, lineHeight: 1.6 }}>Your keys are saved in your browser only — never sent anywhere else.</p>
         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Anthropic API Key</label>
         <input value={ak} onChange={e => setAk(e.target.value)} placeholder="sk-ant-..." type="password" style={inp} />
-        <p style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Get your key at <a href="https://console.anthropic.com" target="_blank" style={{ color: C.gold }}>console.anthropic.com</a></p>
-        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>fal.ai API Key (for image generation)</label>
-        <input value={fk} onChange={e => setFk(e.target.value)} placeholder="xxxxxxxx-xxxx:xxxxxxxx" type="password" style={inp} />
-        <p style={{ fontSize: 12, color: C.muted, marginBottom: 22 }}>Get your key at <a href="https://fal.ai/dashboard/keys" target="_blank" style={{ color: C.gold }}>fal.ai/dashboard/keys</a></p>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 22 }}>Get your key at <a href="https://console.anthropic.com" target="_blank" style={{ color: C.gold }}>console.anthropic.com</a></p>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={save} style={{ flex: 1, padding: 12, borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", border: "none", background: `linear-gradient(135deg,${C.gold},${C.goldDark})`, color: "#0a0f1a" }}>Save keys</button>
           <button onClick={onClose} style={{ padding: "12px 18px", borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", background: "transparent", border: `1px solid ${C.border}`, color: C.muted }}>Cancel</button>
@@ -324,7 +272,7 @@ function SettingsPanel({ anthropicKey, falKey, setAnthropicKey, setFalKey, onClo
 }
 
 export default function App() {
-  const { anthropicKey, falKey, setAnthropicKey, setFalKey } = useKeys();
+  const { anthropicKey, setAnthropicKey } = useKeys();
   const [showSettings, setShowSettings] = useState(!anthropicKey);
   const [tab, setTab] = useState("batch");
   const [loading, setLoading] = useState(false);
@@ -464,12 +412,12 @@ Example: {"posts":[{"content":"refined post","platform":"Instagram","topic":"sho
 
   const TABS = [{ id: "batch", label: "⚡ Batch" }, { id: "agent", label: "🤝 Agent Content" }, { id: "calendar", label: "📅 Calendar" }, { id: "refine", label: "✏️ Refine" }, { id: "saved", label: `📋 Saved (${savedPosts.length})` }];
 
-  const rp = (posts, prefix) => posts.map((p, i) => <PostCard key={i} post={p} id={`${prefix}${i}`} onSave={post => savePost(post, `${prefix}${i}`)} saved={savedIds.has(`${prefix}${i}`)} falKey={falKey} />);
+  const rp = (posts, prefix) => posts.map((p, i) => <PostCard key={i} post={p} id={`${prefix}${i}`} onSave={post => savePost(post, `${prefix}${i}`)} saved={savedIds.has(`${prefix}${i}`)} />);
 
   return (
     <div style={S.app}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      {showSettings && <SettingsPanel anthropicKey={anthropicKey} falKey={falKey} setAnthropicKey={setAnthropicKey} setFalKey={setFalKey} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsPanel anthropicKey={anthropicKey} setAnthropicKey={setAnthropicKey} onClose={() => setShowSettings(false)} />}
       <div style={S.wrap}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${C.border}`, flexWrap: "wrap", gap: 12 }}>
@@ -603,7 +551,7 @@ Example: {"posts":[{"content":"refined post","platform":"Instagram","topic":"sho
                 {Object.entries(calGrouped).sort(([a], [b]) => a.localeCompare(b)).map(([date, posts]) => {
                   const d = new Date(date + "T12:00:00");
                   const lbl = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-                  return <div key={date}><div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: C.gold, margin: "18px 0 10px", paddingBottom: 6, borderBottom: `1px solid ${C.border}` }}>{lbl}</div>{posts.map((p, i) => <PostCard key={i} post={p} id={`c${date}${i}`} onSave={post => savePost(post, `c${date}${i}`)} saved={savedIds.has(`c${date}${i}`)} falKey={falKey} />)}</div>;
+                  return <div key={date}><div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: C.gold, margin: "18px 0 10px", paddingBottom: 6, borderBottom: `1px solid ${C.border}` }}>{lbl}</div>{posts.map((p, i) => <PostCard key={i} post={p} id={`c${date}${i}`} onSave={post => savePost(post, `c${date}${i}`)} saved={savedIds.has(`c${date}${i}`)} />)}</div>;
                 })}
               </div>
             )}
@@ -630,7 +578,7 @@ Example: {"posts":[{"content":"refined post","platform":"Instagram","topic":"sho
                 <div style={{ ...S.sh, marginBottom: 12 }}>Refined post</div>
                 <div style={{ ...S.card, borderColor: C.goldBorder }}>
                   {refineResult.changes && <><div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: C.gold, marginBottom: 6, letterSpacing: "0.08em" }}>✨ What changed</div><p style={{ fontSize: 13, color: C.offwhite, marginBottom: 16, lineHeight: 1.6 }}>{refineResult.changes}</p></>}
-                  <PostCard post={refineResult} id="r0" onSave={post => savePost(post, "r0")} saved={savedIds.has("r0")} falKey={falKey} />
+                  <PostCard post={refineResult} id="r0" onSave={post => savePost(post, "r0")} saved={savedIds.has("r0")} />
                   <button onClick={() => { setRefineInput(refineResult.content || ""); setRefineResult(null); setRefineInstr(""); }} style={{ width: "100%", padding: "11px 22px", borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", background: "transparent", border: `1px solid ${C.goldBorder}`, color: C.gold, marginTop: 8 }}>🔄 Refine again</button>
                 </div>
               </div>
