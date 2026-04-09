@@ -34,12 +34,23 @@ const REFINE_OPTIONS = [
   "Simplify like an educator explaining something complex",
 ];
 
-const IMAGE_PROMPTS = {
-  "buyer-education": "Professional lifestyle photography, young couple reviewing mortgage documents at a bright modern desk, warm Colorado mountain light through large windows, confident smiling expressions, soft bokeh background, aspirational homeownership mood, photorealistic, no text, no words",
-  "agent-focused": "Two confident real estate professionals shaking hands in a modern Colorado office, natural light, trust and partnership atmosphere, clean minimal background, professional business setting, photorealistic, no text, no words",
-  "deal-story": "Joyful young family standing in front of a beautiful Colorado home holding house keys, warm golden hour sunlight, Rocky Mountain peaks visible in background, celebratory mood, photorealistic, no text, no words",
-  "personal": "Confident professional mortgage advisor standing outdoors with Colorado Rocky Mountain skyline, warm natural light, approachable and trustworthy expression, lifestyle photography, photorealistic, no text, no words",
-};
+// Dynamically build an image prompt based on post content and type
+function buildImagePrompt(post) {
+  const content = (post.content || "").slice(0, 300);
+  const topic = post.topic || "";
+  const type = post.type || "buyer-education";
+
+  const styleBase = `Bold graphic design poster, dark navy blue background (#0a0f1a), large bold gold (#f0b429) typography as the hero element, clean minimal layout, strong visual hierarchy, no people, professional financial brand aesthetic, square format social media graphic`;
+
+  const typeGuide = {
+    "buyer-education": `The graphic should visually represent a key mortgage education concept. Extract the single most important fact, tip, or insight from this post and make it the bold headline text of the graphic. Use supporting minimal icons or geometric shapes in gold on navy. Topic: ${topic}. Post excerpt: ${content}`,
+    "agent-focused": `The graphic should speak directly to Realtors. Extract the most compelling point from this post about how Weston helps agents and make it the bold headline. Use professional, authoritative design with gold accents on navy. Topic: ${topic}. Post excerpt: ${content}`,
+    "deal-story": `The graphic should feel celebratory and achievement-focused. Extract the key win or milestone from this post and make it the bold visual headline. Use warm gold tones on navy with a sense of accomplishment. Topic: ${topic}. Post excerpt: ${content}`,
+    "personal": `The graphic should feel warm and human while staying professional. Extract the core message or value from this post and make it the bold headline. Clean navy and gold design. Topic: ${topic}. Post excerpt: ${content}`,
+  };
+
+  return `${styleBase}. ${typeGuide[type] || typeGuide["buyer-education"]}. No photographs of people. No stock imagery. Typography-first design. Gold and white text on dark navy only.`;
+}
 
 const C = {
   bg:"#0a0f1a", surface:"#111827", surfaceHov:"#1a2236", border:"#2a3550", borderBright:"#3d5080",
@@ -179,11 +190,15 @@ function ImagePanel({ post, falKey }) {
   const [state, setState] = useState("idle");
   const [imageUrl, setImageUrl] = useState(null);
   const [imgError, setImgError] = useState("");
-  const prompt = IMAGE_PROMPTS[post.type] || IMAGE_PROMPTS["buyer-education"];
 
   const generate = async () => {
     setState("loading"); setImgError("");
-    try { const url = await callFal(falKey, prompt); setImageUrl(url); setState("done"); }
+    try {
+      const prompt = buildImagePrompt(post);
+      const url = await callFal(falKey, prompt);
+      setImageUrl(url);
+      setState("done");
+    }
     catch (e) { setImgError(e.message || "Image generation failed."); setState("error"); }
   };
 
