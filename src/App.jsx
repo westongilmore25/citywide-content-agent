@@ -139,19 +139,16 @@ async function callClaude(apiKey, messages, systemPrompt) {
 
 function buildImagePrompt(post) {
   const type = post.type || "buyer-education";
-  const topic = (post.topic || "").slice(0, 80);
-  const excerpt = (post.content || "").slice(0, 350);
+  const topic = (post.topic || "mortgage tip").slice(0, 60);
 
-  const styleBase = `Informational social media graphic for a Colorado mortgage advisor. Square format. Clean modern design. No real people or faces.`;
-
-  const typePrompts = {
-    "buyer-education": `${styleBase} Create an educational infographic-style image about: "${topic}". The graphic should visually explain a mortgage concept using icons, simple diagrams, or data visualization. Use a clean white or light background with dark navy and gold accents. Include simple illustrated icons representing homes, documents, money, or credit scores depending on the topic. Style: modern financial education graphic, minimal, clear, professional. Post context: ${excerpt}`,
-    "agent-focused": `${styleBase} Create a professional graphic for real estate agents about: "${topic}". Show a visual concept using a clean diagram, checklist layout, or process flow that helps agents understand mortgage strategy. Dark navy background with gold typography and white accents. Style: bold B2B professional graphic, authoritative, clean. Post context: ${excerpt}`,
-    "deal-story": `${styleBase} Create a celebratory achievement graphic about: "${topic}". Use bold typography, a checkmark or key icon, and a warm color palette of navy and gold. Should feel like a milestone announcement — clean, minimal, joyful. Style: achievement badge or announcement card design. Post context: ${excerpt}`,
-    "personal": `${styleBase} Create a warm personal brand graphic for Weston Gilmore, Colorado mortgage advisor. Topic: "${topic}". Clean design with a Colorado mountain silhouette or simple home icon as the visual anchor. Navy and gold color palette. Style: approachable personal brand card, professional yet warm. Post context: ${excerpt}`,
+  const prompts = {
+    "buyer-education": `Clean informational infographic about "${topic}". Simple icons, minimal text, white background, navy and gold accents. No people.`,
+    "agent-focused": `Simple professional graphic about "${topic}" for real estate agents. Clean layout, minimal icons, navy and gold color scheme. No people.`,
+    "deal-story": `Clean celebratory graphic about "${topic}". Simple checkmark or key icon, minimal design, navy and gold. No people.`,
+    "personal": `Simple motivational graphic about "${topic}". Clean minimal design, Colorado mountain icon, navy and gold. No people.`,
   };
 
-  return typePrompts[type] || typePrompts["buyer-education"];
+  return prompts[type] || prompts["buyer-education"];
 }
 
 function ImagePromptPanel({ post }) {
